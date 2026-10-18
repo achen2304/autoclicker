@@ -2,14 +2,17 @@
 
 A Windows autoclicker with a GUI. Build up a list of inputs — mouse clicks or
 keyboard keys, each either repeating on its own interval or held down the whole
-time — and toggle them all on/off with `F6` (works even while another window like
-Roblox is focused).
+time — and toggle them all on/off with one hotkey (`F6` by default, rebindable to
+any key) that works even while another window like Roblox is focused.
 
 ## Download
 
-Grab `Autoclicker.exe` from the [latest release](https://github.com/achen2304/autoclicker/releases/latest)
-and run it — no Python needed. Windows SmartScreen may warn about an unsigned exe;
-choose "More info" then "Run anyway", or build it yourself (below).
+**[⬇ Download Autoclicker.exe](https://github.com/achen2304/autoclicker/releases/latest/download/Autoclicker.exe)**
+— no Python needed, just run it. That link always serves the newest build; all
+versions are on the [releases page](https://github.com/achen2304/autoclicker/releases/latest).
+
+Windows SmartScreen may warn about an unsigned exe; choose "More info" then
+"Run anyway", or build it yourself (below).
 
 ## Setup (from source)
 
@@ -31,6 +34,8 @@ python main.py
    concurrently, each on its own timing. `Del` or double-click removes a row.
 5. Press `F6` or **START** to run everything; `F6` again stops and releases any held
    keys. Closing the window also releases them.
+6. To use a different hotkey, click **Change** next to "Start/stop hotkey" and press
+   the key you want. Pick one that isn't also an input, or you'll trigger both.
 
 With no inputs added, the form itself runs as a single input, so simple one-click
 use needs no setup.

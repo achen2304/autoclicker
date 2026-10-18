@@ -5,7 +5,7 @@ from tkinter import ttk
 
 from pynput import keyboard, mouse
 
-HOTKEY = keyboard.Key.f6
+DEFAULT_HOTKEY = keyboard.Key.f6
 PICK_DELAY_SECONDS = 3
 BUTTONS = {
     "Left": mouse.Button.left,
@@ -40,6 +40,10 @@ def key_label(key):
     return getattr(key, "char", None) or key.name
 
 
+def hotkey_label(key):
+    return key_label(key).upper()
+
+
 def release_all(held):
     """Release every held input, even if one of them throws."""
     for item in held:
@@ -64,13 +68,16 @@ class AutoClickerApp:
 
         self.target_pos = None
         self.target_key = None
+        self.hotkey = DEFAULT_HOTKEY
         self.capturing_key = False
+        self.capturing_hotkey = False
         self.interval_ms = tk.StringVar(value="100")
         self.press_choice = tk.StringVar(value="Left")
         self.mode_choice = tk.StringVar(value="Repeat")
         self.status_text = tk.StringVar(value="Stopped")
         self.position_text = tk.StringVar(value="Live cursor position")
         self.key_text = tk.StringVar(value="no key recorded")
+        self.hotkey_text = tk.StringVar(value=hotkey_label(DEFAULT_HOTKEY))
         self.hint_text = tk.StringVar(value="")
 
         self._build_style()
@@ -221,9 +228,18 @@ class AutoClickerApp:
             row=0, column=2, sticky="w", padx=(4, 0)
         )
 
+        hotkey_row = ttk.Frame(outer, style="Bg.TFrame")
+        hotkey_row.grid(row=3, column=0, sticky="we", pady=(12, 0))
+        ttk.Label(hotkey_row, text="Start/stop hotkey:", style="Bg.TLabel").grid(row=0, column=0)
+        ttk.Label(hotkey_row, textvariable=self.hotkey_text, style="Status.TLabel").grid(
+            row=0, column=1, padx=(6, 8)
+        )
+        self.hotkey_button = ttk.Button(hotkey_row, text="Change", command=self.change_hotkey)
+        self.hotkey_button.grid(row=0, column=2)
+
         self.toggle_button = tk.Button(
             outer,
-            text="START   (F6)",
+            text=self._toggle_label(),
             command=self.toggle,
             bg=ACCENT,
             fg="white",
@@ -235,18 +251,34 @@ class AutoClickerApp:
             pady=10,
             cursor="hand2",
         )
-        self.toggle_button.grid(row=3, column=0, sticky="we", pady=(14, 6))
+        self.toggle_button.grid(row=4, column=0, sticky="we", pady=(10, 6))
 
-        ttk.Label(
-            outer,
-            text="F6 starts and stops everything, even while another window is focused.",
-            style="Hint.TLabel",
-        ).grid(row=4, column=0, sticky="w")
+        self.hotkey_hint = ttk.Label(outer, text="", style="Hint.TLabel")
+        self.hotkey_hint.grid(row=5, column=0, sticky="w")
         ttk.Label(outer, textvariable=self.hint_text, style="Hint.TLabel").grid(
-            row=5, column=0, sticky="w"
+            row=6, column=0, sticky="w"
         )
+        self._sync_hotkey_labels()
 
         self._sync_mode()
+
+    def _toggle_label(self):
+        action = "STOP" if self.running.is_set() else "START"
+        return f"{action}   ({hotkey_label(self.hotkey)})"
+
+    def _sync_hotkey_labels(self):
+        name = hotkey_label(self.hotkey)
+        self.hotkey_text.set(name)
+        self.hotkey_button.config(text="Change")
+        self.toggle_button.config(text=self._toggle_label())
+        self.hotkey_hint.config(
+            text=f"{name} starts and stops everything, even while another window is focused."
+        )
+
+    def change_hotkey(self):
+        self.capturing_hotkey = True
+        self.hotkey_button.config(text="Press a key...")
+        self._set_status("Listening for a new hotkey", ACCENT)
 
     def _sync_mode(self):
         hold = self.mode_choice.get() == "Hold"
@@ -255,6 +287,10 @@ class AutoClickerApp:
     def _set_status(self, text, color=MUTED):
         self.status_text.set(text)
         self.status_dot.config(fg=color)
+
+    def _idle_status(self):
+        running = self.running.is_set()
+        self._set_status("Running" if running else "Stopped", GREEN if running else MUTED)
 
     def record_key(self):
         self.capturing_key = True
@@ -270,8 +306,7 @@ class AutoClickerApp:
             self.target_pos = self.mouse_controller.position
             self.position_text.set(f"Fixed at x={self.target_pos[0]}, y={self.target_pos[1]}")
             self.pick_button.config(text="Pick Location")
-            self._set_status("Running" if self.running.is_set() else "Stopped",
-                             GREEN if self.running.is_set() else MUTED)
+            self._idle_status()
 
         self._set_status("Move the mouse to your target", ACCENT)
         threading.Thread(target=countdown, daemon=True).start()
@@ -327,8 +362,7 @@ class AutoClickerApp:
         tag = "odd" if len(self.inputs) % 2 else "even"
         self.tree.insert("", "end", values=(item["label"], mode, at), tags=(tag,))
         self._refresh_list_state()
-        self._set_status("Running" if self.running.is_set() else "Stopped",
-                         GREEN if self.running.is_set() else MUTED)
+        self._idle_status()
         if self.running.is_set():
             self.hint_text.set("Added — restart with F6 to include it.")
 
@@ -367,7 +401,7 @@ class AutoClickerApp:
 
         self.running.set()
         self.hint_text.set("")
-        self.toggle_button.config(text="STOP   (F6)", bg=DANGER, activebackground=DANGER_DOWN)
+        self.toggle_button.config(text=self._toggle_label(), bg=DANGER, activebackground=DANGER_DOWN)
 
         # ponytail: inputs run independently, so two position-locked inputs fight
         # over the cursor. No arbitration by design.
@@ -400,7 +434,7 @@ class AutoClickerApp:
         release_all(self.held)
         self.held = []
         self._set_status("Stopped", MUTED)
-        self.toggle_button.config(text="START   (F6)", bg=ACCENT, activebackground=ACCENT_DOWN)
+        self.toggle_button.config(text=self._toggle_label(), bg=ACCENT, activebackground=ACCENT_DOWN)
 
     def on_close(self):
         self.stop()
@@ -408,23 +442,31 @@ class AutoClickerApp:
 
     def _start_hotkey_listener(self):
         def on_press(key):
+            if self.capturing_hotkey:
+                self.capturing_hotkey = False
+                self.hotkey = key
+                self.root.after(0, self._hotkey_recorded)
+                return
             if self.capturing_key:
                 self.capturing_key = False
                 self.target_key = key
                 self.root.after(0, self._key_recorded)
                 return
-            if key == HOTKEY:
+            if key == self.hotkey:
                 self.root.after(0, self.toggle)
 
         listener = keyboard.Listener(on_press=on_press)
         listener.daemon = True
         listener.start()
 
+    def _hotkey_recorded(self):
+        self._sync_hotkey_labels()
+        self._idle_status()
+
     def _key_recorded(self):
         self.key_text.set(f"recorded: {key_label(self.target_key)}")
         self.record_button.config(text="Record Key")
-        self._set_status("Running" if self.running.is_set() else "Stopped",
-                         GREEN if self.running.is_set() else MUTED)
+        self._idle_status()
 
 
 def main():
