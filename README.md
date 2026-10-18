@@ -1,9 +1,9 @@
 # Autoclicker
 
-A simple Windows autoclicker with a GUI: set an interval, pick what gets pressed
-(left/right/middle mouse button or any keyboard key), and an optional fixed screen
-position, then toggle on/off with `F6` (works even while another window like Roblox
-is focused).
+A Windows autoclicker with a GUI. Build up a list of inputs — mouse clicks or
+keyboard keys, each either repeating on its own interval or held down the whole
+time — and toggle them all on/off with `F6` (works even while another window like
+Roblox is focused).
 
 ## Download
 
@@ -20,12 +20,20 @@ python main.py
 
 ## Usage
 
-1. Set the interval in milliseconds and pick what to press. For "Keyboard key",
-   click "Record Key" and press the key you want repeated.
-2. Either leave it on "live cursor position" (clicks wherever your mouse currently
-   is) or click "Pick Location", then within 3 seconds move your mouse to the spot
-   you want clicked (e.g. a Roblox button) — it will lock to that screen position.
-3. Press `F6` or click "Start" to begin clicking; press `F6` again to stop.
+1. **Action** — pick a left/right/middle click, or choose "Keyboard key" and click
+   "Record Key", then press the key you want.
+2. **Mode** — "Repeat every N ms", or "Hold down the whole time" (the key or button
+   stays pressed from start until stop, e.g. holding `c` while the rest of the loop
+   keeps clicking).
+3. **At** — leave it on live cursor position, or click "Pick Location" and move your
+   mouse to the target within 3 seconds to lock that screen position.
+4. Click **Add Input** and repeat for as many inputs as you want. They all run
+   concurrently, each on its own timing. `Del` or double-click removes a row.
+5. Press `F6` or **START** to run everything; `F6` again stops and releases any held
+   keys. Closing the window also releases them.
+
+With no inputs added, the form itself runs as a single input, so simple one-click
+use needs no setup.
 
 ## Build a standalone .exe
 
@@ -48,6 +56,10 @@ copy of the app and delete the old exe, then rebuild.
 
 ## Notes
 
+- Only inputs added *before* you start are included; add one while running and
+  tap `F6` twice to pick it up.
+- Two inputs both locked to a fixed position will fight over the cursor — mixing one
+  position-locked click with keyboard inputs works fine.
 - Some games and anti-cheat systems treat autoclickers as macros/cheats, which can
   violate their Terms of Service — check the rules of whatever you're farming
   before relying on this to avoid a ban.

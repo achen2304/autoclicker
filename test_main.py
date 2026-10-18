@@ -1,6 +1,6 @@
 from pynput import keyboard
 
-from main import BUTTONS, key_label, parse_interval
+from main import BUTTONS, key_label, parse_interval, release_all
 
 
 def test():
@@ -10,6 +10,15 @@ def test():
     assert set(BUTTONS) == {"Left", "Right", "Middle"}
     assert key_label(keyboard.Key.f6) == "f6"
     assert key_label(keyboard.KeyCode.from_char("e")) == "e"
+
+    released = []
+    def boom():
+        raise RuntimeError("controller died")
+    release_all([
+        {"up": boom},
+        {"up": lambda: released.append("second")},
+    ])
+    assert released == ["second"], "a failed release must not leave later keys stuck down"
     print("ok")
 
 
