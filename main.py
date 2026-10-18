@@ -7,6 +7,24 @@ from pynput import keyboard, mouse
 
 HOTKEY = keyboard.Key.f6
 PICK_DELAY_SECONDS = 3
+BUTTONS = {
+    "Left": mouse.Button.left,
+    "Right": mouse.Button.right,
+    "Middle": mouse.Button.middle,
+}
+KEYBOARD_CHOICE = "Keyboard key"
+
+
+def parse_interval(text):
+    """Milliseconds string -> seconds float, or None if unparseable."""
+    try:
+        return max(1, int(text)) / 1000.0
+    except ValueError:
+        return None
+
+
+def key_label(key):
+    return getattr(key, "char", None) or key.name
 
 
 class AutoClickerApp:
@@ -18,89 +36,143 @@ class AutoClickerApp:
         self.mouse_controller = mouse.Controller()
         self.keyboard_controller = keyboard.Controller()
         self.running = threading.Event()
-        self.click_thread = None
+        self.threads = []
+        self.inputs = []
 
         self.target_pos = None
         self.target_key = None
         self.capturing_key = False
         self.interval_ms = tk.StringVar(value="100")
-        self.button_choice = tk.StringVar(value="Left")
+        self.press_choice = tk.StringVar(value="Left")
         self.status_text = tk.StringVar(value="Stopped")
-        self.position_text = tk.StringVar(value="Not set (using live cursor position)")
+        self.position_text = tk.StringVar(value="Live cursor position")
         self.key_text = tk.StringVar(value="Not set")
 
         self._build_ui()
         self._start_hotkey_listener()
 
     def _build_ui(self):
-        pad = {"padx": 10, "pady": 6}
         frame = ttk.Frame(self.root)
-        frame.grid(row=0, column=0, sticky="nsew", **pad)
+        frame.grid(row=0, column=0, sticky="nsew", padx=10, pady=8)
 
-        ttk.Label(frame, text="Click interval (ms):").grid(row=0, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.interval_ms, width=10).grid(row=0, column=1, sticky="w")
+        editor = ttk.LabelFrame(frame, text="New input")
+        editor.grid(row=0, column=0, sticky="we")
 
-        ttk.Label(frame, text="Press:").grid(row=1, column=0, sticky="w")
+        ttk.Label(editor, text="Press:").grid(row=0, column=0, sticky="w", padx=6, pady=4)
         ttk.Combobox(
-            frame,
-            textvariable=self.button_choice,
-            values=["Left", "Right", "Middle", "Keyboard key"],
+            editor,
+            textvariable=self.press_choice,
+            values=list(BUTTONS) + [KEYBOARD_CHOICE],
             state="readonly",
             width=14,
-        ).grid(row=1, column=1, sticky="w")
+        ).grid(row=0, column=1, sticky="w")
+        ttk.Button(editor, text="Record Key", command=self.record_key).grid(row=0, column=2, padx=6)
+        ttk.Label(editor, textvariable=self.key_text, width=10).grid(row=0, column=3, sticky="w")
 
-        ttk.Label(frame, text="Keyboard key:").grid(row=2, column=0, sticky="w")
-        ttk.Label(frame, textvariable=self.key_text).grid(row=2, column=1, sticky="w", columnspan=2)
+        ttk.Label(editor, text="Every (ms):").grid(row=1, column=0, sticky="w", padx=6, pady=4)
+        ttk.Entry(editor, textvariable=self.interval_ms, width=10).grid(row=1, column=1, sticky="w")
 
-        ttk.Button(frame, text="Record Key", command=self.record_key).grid(
-            row=3, column=0, columnspan=2, sticky="we", pady=(4, 8)
+        ttk.Label(editor, text="At:").grid(row=2, column=0, sticky="w", padx=6, pady=4)
+        ttk.Label(editor, textvariable=self.position_text).grid(row=2, column=1, columnspan=3, sticky="w")
+        ttk.Button(editor, text="Pick Location (3s)", command=self.pick_location).grid(
+            row=3, column=1, sticky="we", pady=(0, 6)
+        )
+        ttk.Button(editor, text="Use Live Cursor", command=self.clear_location).grid(
+            row=3, column=2, columnspan=2, sticky="we", padx=6, pady=(0, 6)
+        )
+        ttk.Button(editor, text="Add Input", command=self.add_input).grid(
+            row=4, column=0, columnspan=4, sticky="we", padx=6, pady=(0, 6)
         )
 
-        ttk.Label(frame, text="Click location:").grid(row=4, column=0, sticky="w")
-        ttk.Label(frame, textvariable=self.position_text).grid(row=4, column=1, sticky="w", columnspan=2)
-
-        ttk.Button(frame, text="Pick Location (3s delay)", command=self.pick_location).grid(
-            row=5, column=0, columnspan=2, sticky="we", pady=(4, 4)
+        self.tree = ttk.Treeview(
+            frame, columns=("press", "interval", "at"), show="headings", height=5
         )
-        ttk.Button(frame, text="Use Live Cursor Position", command=self.clear_location).grid(
-            row=6, column=0, columnspan=2, sticky="we"
-        )
+        for col, title, width in (("press", "Press", 110), ("interval", "Every", 80), ("at", "At", 150)):
+            self.tree.heading(col, text=title)
+            self.tree.column(col, width=width, anchor="w")
+        self.tree.grid(row=1, column=0, sticky="we", pady=(8, 4))
 
-        ttk.Separator(frame).grid(row=7, column=0, columnspan=3, sticky="we", pady=8)
+        buttons = ttk.Frame(frame)
+        buttons.grid(row=2, column=0, sticky="we")
+        ttk.Button(buttons, text="Remove Selected", command=self.remove_selected).grid(row=0, column=0)
+        ttk.Button(buttons, text="Clear All", command=self.clear_inputs).grid(row=0, column=1, padx=6)
+
+        ttk.Separator(frame).grid(row=3, column=0, sticky="we", pady=8)
 
         self.toggle_button = ttk.Button(frame, text="Start (F6)", command=self.toggle)
-        self.toggle_button.grid(row=8, column=0, columnspan=2, sticky="we")
+        self.toggle_button.grid(row=4, column=0, sticky="we")
 
-        ttk.Label(frame, text="Status:").grid(row=9, column=0, sticky="w", pady=(8, 0))
-        ttk.Label(frame, textvariable=self.status_text).grid(row=9, column=1, sticky="w", pady=(8, 0))
+        status = ttk.Frame(frame)
+        status.grid(row=5, column=0, sticky="we", pady=(8, 0))
+        ttk.Label(status, text="Status:").grid(row=0, column=0, sticky="w")
+        ttk.Label(status, textvariable=self.status_text).grid(row=0, column=1, sticky="w", padx=6)
 
         ttk.Label(
             frame,
-            text="Press F6 anytime (even while Roblox is focused) to start/stop.",
+            text="F6 starts/stops every input at once, even while another window is focused.\n"
+            "With no inputs added, the form above is used as a single input.",
             foreground="gray",
-        ).grid(row=10, column=0, columnspan=3, sticky="w", pady=(10, 0))
+            justify="left",
+        ).grid(row=6, column=0, sticky="w", pady=(10, 0))
 
     def record_key(self):
         self.capturing_key = True
         self.status_text.set("Press any key to record...")
 
     def pick_location(self):
-        self.status_text.set(f"Move mouse to target... capturing in {PICK_DELAY_SECONDS}s")
-
         def countdown():
             for remaining in range(PICK_DELAY_SECONDS, 0, -1):
                 self.status_text.set(f"Capturing position in {remaining}...")
                 time.sleep(1)
-            pos = self.mouse_controller.position
-            self.target_pos = pos
-            self.position_text.set(f"Fixed at {pos}")
+            self.target_pos = self.mouse_controller.position
+            self.position_text.set(f"Fixed at {self.target_pos}")
             self.status_text.set("Stopped")
 
         threading.Thread(target=countdown, daemon=True).start()
 
     def clear_location(self):
         self.target_pos = None
-        self.position_text.set("Not set (using live cursor position)")
+        self.position_text.set("Live cursor position")
+
+    def _form_input(self):
+        """Current form as an input dict, or None (status explains why)."""
+        interval = parse_interval(self.interval_ms.get())
+        if interval is None:
+            self.status_text.set("Invalid interval - enter a number")
+            return None
+
+        choice = self.press_choice.get()
+        if choice == KEYBOARD_CHOICE:
+            if self.target_key is None:
+                self.status_text.set("No key recorded - click Record Key")
+                return None
+            key = self.target_key
+            press = lambda: self.keyboard_controller.tap(key)
+            label = f"Key: {key_label(key)}"
+        else:
+            button = BUTTONS[choice]
+            press = lambda: self.mouse_controller.click(button, 1)
+            label = f"{choice} click"
+
+        return {"press": press, "interval": interval, "pos": self.target_pos, "label": label}
+
+    def add_input(self):
+        item = self._form_input()
+        if item is None:
+            return
+        self.inputs.append(item)
+        at = f"{item['pos']}" if item["pos"] else "live cursor"
+        self.tree.insert("", "end", values=(item["label"], f"{int(item['interval'] * 1000)} ms", at))
+        self.status_text.set("Stopped" if not self.running.is_set() else "Running")
+
+    def remove_selected(self):
+        for item_id in self.tree.selection():
+            del self.inputs[self.tree.index(item_id)]
+            self.tree.delete(item_id)
+
+    def clear_inputs(self):
+        self.inputs.clear()
+        self.tree.delete(*self.tree.get_children())
 
     def toggle(self):
         if self.running.is_set():
@@ -109,37 +181,32 @@ class AutoClickerApp:
             self.start()
 
     def start(self):
-        try:
-            interval = max(1, int(self.interval_ms.get())) / 1000.0
-        except ValueError:
-            self.status_text.set("Invalid interval - enter a number")
-            return
-
-        choice = self.button_choice.get()
-        if choice == "Keyboard key":
-            if self.target_key is None:
-                self.status_text.set("No key recorded - click Record Key")
+        items = self.inputs
+        if not items:
+            single = self._form_input()
+            if single is None:
                 return
-            key = self.target_key
-            press = lambda: self.keyboard_controller.tap(key)
-        else:
-            button = {"Left": mouse.Button.left, "Right": mouse.Button.right,
-                      "Middle": mouse.Button.middle}[choice]
-            press = lambda: self.mouse_controller.click(button, 1)
+            items = [single]
 
         self.running.set()
-        self.status_text.set("Running")
+        self.status_text.set(f"Running ({len(items)} input{'s' if len(items) > 1 else ''})")
         self.toggle_button.config(text="Stop (F6)")
 
-        def click_loop():
-            while self.running.is_set():
-                if self.target_pos is not None:
-                    self.mouse_controller.position = self.target_pos
-                press()
-                time.sleep(interval)
+        # ponytail: inputs run independently, so two position-locked inputs fight
+        # over the cursor. Add a shared lock + per-input position restore if that
+        # combination ever needs to work.
+        self.threads = [
+            threading.Thread(target=self._loop, args=(item,), daemon=True) for item in items
+        ]
+        for thread in self.threads:
+            thread.start()
 
-        self.click_thread = threading.Thread(target=click_loop, daemon=True)
-        self.click_thread.start()
+    def _loop(self, item):
+        while self.running.is_set():
+            if item["pos"] is not None:
+                self.mouse_controller.position = item["pos"]
+            item["press"]()
+            time.sleep(item["interval"])
 
     def stop(self):
         self.running.clear()
@@ -151,8 +218,9 @@ class AutoClickerApp:
             if self.capturing_key:
                 self.capturing_key = False
                 self.target_key = key
-                name = getattr(key, "char", None) or key.name
-                self.root.after(0, lambda: (self.key_text.set(name), self.status_text.set("Stopped")))
+                self.root.after(
+                    0, lambda: (self.key_text.set(key_label(key)), self.status_text.set("Stopped"))
+                )
                 return
             if key == HOTKEY:
                 self.root.after(0, self.toggle)
