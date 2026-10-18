@@ -5,7 +5,13 @@ A simple Windows autoclicker with a GUI: set an interval, pick what gets pressed
 position, then toggle on/off with `F6` (works even while another window like Roblox
 is focused).
 
-## Setup
+## Download
+
+Grab `Autoclicker.exe` from the [latest release](https://github.com/achen2304/autoclicker/releases/latest)
+and run it — no Python needed. Windows SmartScreen may warn about an unsigned exe;
+choose "More info" then "Run anyway", or build it yourself (below).
+
+## Setup (from source)
 
 ```
 pip install -r requirements.txt
