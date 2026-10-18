@@ -21,11 +21,27 @@ python main.py
    you want clicked (e.g. a Roblox button) — it will lock to that screen position.
 3. Press `F6` or click "Start" to begin clicking; press `F6` again to stop.
 
+## Build a standalone .exe
+
+No Python needed to run the result. From the project root:
+
+```
+pip install pyinstaller
+pyinstaller --noconfirm Autoclicker.spec
+```
+
+The executable lands at `dist/Autoclicker.exe`. `Autoclicker.spec` is the build
+config (one-file, no console window); to build without it:
+
+```
+pyinstaller --onefile --windowed --name Autoclicker main.py
+```
+
+If PyInstaller fails with `WinError 5` on `dist/Autoclicker.exe`, close any running
+copy of the app and delete the old exe, then rebuild.
+
 ## Notes
 
 - Some games and anti-cheat systems treat autoclickers as macros/cheats, which can
   violate their Terms of Service — check the rules of whatever you're farming
   before relying on this to avoid a ban.
-- To make a standalone `.exe` (no Python required to run it), install `pyinstaller`
-  and run: `pyinstaller --onefile --windowed main.py`. The executable will be in
-  `dist/main.exe`.
